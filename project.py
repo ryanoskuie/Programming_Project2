@@ -28,13 +28,18 @@ def user_move(board):
             row, col = map(int, move.split())
             row -= 1
             col -= 1
+
+            if row not in range(3) or col not in range(3):
+                print("Row and column must be between 1 and 3.")
+                continue
+
             if board[row][col] == " ":
                 board[row][col] = "X"
                 break
             else:
                 print("Cell already taken. Try again.")
-        except (ValueError, IndexError):
-            print("Invalid input. Enter row and column numbers between 1 and 3.")
+        except ValueError:
+            print("Invalid input. Enter row and column numbers like: 1 1")
 
 def ai_move(board):
     empty = get_empty_cells(board)
