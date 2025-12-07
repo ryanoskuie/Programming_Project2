@@ -4,10 +4,12 @@ import tkinter as tk
 from itertools import cycle
 from tkinter import font
 from typing import NamedTuple
+import random
 
 class Player(NamedTuple):
     label: str
     color: str
+    isAi: bool
 
 class Move(NamedTuple):
     row: int
@@ -16,8 +18,8 @@ class Move(NamedTuple):
 
 BOARD_SIZE = 3
 DEFAULT_PLAYERS = (
-    Player(label="X", color="blue"),
-    Player(label="O", color="green"),
+    Player(label="X", color="blue", isAi=False), # Human Player
+    Player(label="O", color="green", isAi=True), # AI Player
 )
 
 class TicTacToeGame:
@@ -91,6 +93,17 @@ class TicTacToeGame:
         self._has_winner = False
         self.winner_combo = []
 
+    def get_random_move(self):
+        possible_moves = []
+        for row in range(self.board_size):
+            for col in range(self.board_size):
+                if self._current_moves[row][col].label == "":
+                    possible_moves.append((row, col))
+        if possible_moves:
+            move = random.choice(possible_moves)
+            return move
+        return None
+
 class TicTacToeBoard(tk.Tk):
     def __init__(self, game):
         super().__init__()
@@ -108,6 +121,7 @@ class TicTacToeBoard(tk.Tk):
         file_menu.add_command(label="Play Again", command=self.reset_board)
         file_menu.add_separator()
         file_menu.add_command(label="Exit", command=quit)
+        file_menu.add_command(label="Random", command=self._ai_play_random)
         menu_bar.add_cascade(label="File", menu=file_menu)
 
     def _create_board_display(self):
@@ -132,7 +146,7 @@ class TicTacToeBoard(tk.Tk):
                     text="",
                     font=font.Font(size=36, weight="bold"),
                     fg="black",
-                    width=3,
+                    width=5,
                     height=2,
                     highlightbackground="lightblue",
                 )
@@ -159,6 +173,25 @@ class TicTacToeBoard(tk.Tk):
                 self._game.toggle_player()
                 msg = f"{self._game.current_player.label}'s turn"
                 self._update_display(msg)
+                if (self._game.current_player.isAi == True):
+                    self._ai_play()
+    
+    def _ai_play_random(self):
+        """Handle AI moves."""
+        print("AI's turn")
+        rand_move = self._game.get_random_move()
+        row, col = rand_move
+        move = Move(row, col, self._game.current_player.label)
+        if move and self._game.is_valid_move(move):
+
+            for button, (row, col) in self._cells.items():
+                if (row, col) == (move.row, move.col):
+                    self._update_button(button)
+                    self._game.process_move(move)
+                    break
+        self._game.toggle_player()
+
+
 
     def _update_button(self, clicked_btn):
         clicked_btn.config(text=self._game.current_player.label)
