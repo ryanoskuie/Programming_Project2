@@ -1,249 +1,192 @@
-from tkinter import *
+"""A tic-tac-toe game built with Python and Tkinter."""
 
-from games import (
-    GameState,
-    TicTacToe,
-    alpha_beta_player,
-    minmax_decision,
-    random_player,
+import tkinter as tk
+from itertools import cycle
+from tkinter import font
+from typing import NamedTuple
+
+class Player(NamedTuple):
+    label: str
+    color: str
+
+class Move(NamedTuple):
+    row: int
+    col: int
+    label: str = ""
+
+BOARD_SIZE = 3
+DEFAULT_PLAYERS = (
+    Player(label="X", color="blue"),
+    Player(label="O", color="green"),
 )
 
-ttt = TicTacToe()
-root = None
-buttons = []
-frames = []
-x_pos = []
-o_pos = []
-count = 0
-sym = ""
-result = None
-choices = None
+class TicTacToeGame:
+    def __init__(self, players=DEFAULT_PLAYERS, board_size=BOARD_SIZE):
+        self._players = cycle(players)
+        self.board_size = board_size
+        self.current_player = next(self._players)
+        self.winner_combo = []
+        self._current_moves = []
+        self._has_winner = False
+        self._winning_combos = []
+        self._setup_board()
 
+    def _setup_board(self):
+        self._current_moves = [
+            [Move(row, col) for col in range(self.board_size)]
+            for row in range(self.board_size)
+        ]
+        self._winning_combos = self._get_winning_combos()
 
-def gen_state(to_move='X', x_positions=None, o_positions=None, h=None, v=None):
-    """
-    Build a TicTacToe GameState for the current board. This mirrors the helper
-    from the tests but keeps the game self contained.
-    """
-    h = h or ttt.h
-    v = v or ttt.v
-    x_positions = x_positions or []
-    o_positions = o_positions or []
-    moves = set((x, y) for x in range(1, h + 1) for y in range(1, v + 1))
-    moves -= set(x_positions)
-    moves -= set(o_positions)
-    board = {pos: 'X' for pos in x_positions}
-    board.update({pos: 'O' for pos in o_positions})
-    return GameState(to_move=to_move, utility=0, board=board, moves=list(moves))
+    def _get_winning_combos(self):
+        rows = [
+            [(move.row, move.col) for move in row]
+            for row in self._current_moves
+        ]
+        columns = [list(col) for col in zip(*rows)]
+        first_diagonal = [row[i] for i, row in enumerate(rows)]
+        second_diagonal = [col[j] for j, col in enumerate(reversed(columns))]
+        return rows + columns + [first_diagonal, second_diagonal]
 
+    def toggle_player(self):
+        """Return a toggled player."""
+        self.current_player = next(self._players)
 
-def create_frames(root):
-    """
-    This function creates the necessary structure of the game.
-    """
-    frame1 = Frame(root)
-    frame2 = Frame(root)
-    frame3 = Frame(root)
-    frame4 = Frame(root)
-    create_buttons(frame1)
-    create_buttons(frame2)
-    create_buttons(frame3)
-    buttonExit = Button(
-        frame4, height=1, width=2,
-        text="Exit",
-        command=lambda: exit_game(root))
-    buttonExit.pack(side=LEFT)
-    frame4.pack(side=BOTTOM)
-    frame3.pack(side=BOTTOM)
-    frame2.pack(side=BOTTOM)
-    frame1.pack(side=BOTTOM)
-    frames.append(frame1)
-    frames.append(frame2)
-    frames.append(frame3)
-    for x in frames:
-        buttons_in_frame = []
-        for y in x.winfo_children():
-            buttons_in_frame.append(y)
-        buttons.append(buttons_in_frame)
-    buttonReset = Button(frame4, height=1, width=2,
-                         text="Reset", command=lambda: reset_game())
-    buttonReset.pack(side=LEFT)
+    def is_valid_move(self, move):
+        """Return True if move is valid, and False otherwise."""
+        row, col = move.row, move.col
+        move_was_not_played = self._current_moves[row][col].label == ""
+        no_winner = not self._has_winner
+        return no_winner and move_was_not_played
 
+    def process_move(self, move):
+        """Process the current move and check if it's a win."""
+        row, col = move.row, move.col
+        self._current_moves[row][col] = move
+        for combo in self._winning_combos:
+            results = set(self._current_moves[n][m].label for n, m in combo)
+            is_win = (len(results) == 1) and ("" not in results)
+            if is_win:
+                self._has_winner = True
+                self.winner_combo = combo
+                break
 
-def create_buttons(frame):
-    """
-    This function creates the buttons to be pressed/clicked during the game.
-    """
-    button0 = Button(frame, height=2, width=2, text=" ",
-                     command=lambda: on_click(button0))
-    button0.pack(side=LEFT)
-    button1 = Button(frame, height=2, width=2, text=" ",
-                     command=lambda: on_click(button1))
-    button1.pack(side=LEFT)
-    button2 = Button(frame, height=2, width=2, text=" ",
-                     command=lambda: on_click(button2))
-    button2.pack(side=LEFT)
+    def has_winner(self):
+        """Return True if the game has a winner, and False otherwise."""
+        return self._has_winner
 
+    def is_tied(self):
+        """Return True if the game is tied, and False otherwise."""
+        no_winner = not self._has_winner
+        played_moves = (
+            move.label for row in self._current_moves for move in row
+        )
+        return no_winner and all(played_moves)
 
-# TODO: Add a choice option for the user.
-def on_click(button):
-    """
-    This function determines the action of any button.
-    """
-    global ttt, choices, count, sym, result, x_pos, o_pos
+    def reset_game(self):
+        """Reset the game state to play again."""
+        for row, row_content in enumerate(self._current_moves):
+            for col, _ in enumerate(row_content):
+                row_content[col] = Move(row, col)
+        self._has_winner = False
+        self.winner_combo = []
 
-    if count % 2 == 0:
-        sym = "X"
-    else:
-        sym = "O"
-    count += 1
+class TicTacToeBoard(tk.Tk):
+    def __init__(self, game):
+        super().__init__()
+        self.title("Tic-Tac-Toe Game")
+        self._cells = {}
+        self._game = game
+        self._create_menu()
+        self._create_board_display()
+        self._create_board_grid()
 
-    button.config(
-        text=sym,
-        state='disabled',
-        disabledforeground="red")  # For cross
+    def _create_menu(self):
+        menu_bar = tk.Menu(master=self)
+        self.config(menu=menu_bar)
+        file_menu = tk.Menu(master=menu_bar)
+        file_menu.add_command(label="Play Again", command=self.reset_board)
+        file_menu.add_separator()
+        file_menu.add_command(label="Exit", command=quit)
+        menu_bar.add_cascade(label="File", menu=file_menu)
 
-    x, y = get_coordinates(button)
-    x += 1
-    y += 1
-    x_pos.append((x, y))
-    state = gen_state(to_move='O', x_positions=x_pos,
-                      o_positions=o_pos)
-    try:
-        choice = choices.get()
-        if "Random" in choice:
-            a, b = random_player(ttt, state)
-        elif "Pro" in choice:
-            a, b = minmax_decision(state, ttt)
-        else:
-            a, b = alpha_beta_player(ttt, state)
-    except (ValueError, IndexError, TypeError) as e:
-        disable_game()
-        result.set("It's a draw :|")
-        return
-    if 1 <= a <= 3 and 1 <= b <= 3:
-        o_pos.append((a, b))
-        button_to_change = get_button(a - 1, b - 1)
-        if count % 2 == 0:  # Used again, will become handy when user is given the choice of turn.
-            sym = "X"
-        else:
-            sym = "O"
-        count += 1
+    def _create_board_display(self):
+        display_frame = tk.Frame(master=self)
+        display_frame.pack(fill=tk.X)
+        self.display = tk.Label(
+            master=display_frame,
+            text="Ready?",
+            font=font.Font(size=28, weight="bold"),
+        )
+        self.display.pack()
 
-        if check_victory(button):
-            result.set("You win :)")
-            disable_game()
-        else:
-            button_to_change.config(text=sym, state='disabled',
-                                    disabledforeground="black")
-            if check_victory(button_to_change):
-                result.set("You lose :(")
-                disable_game()
+    def _create_board_grid(self):
+        grid_frame = tk.Frame(master=self)
+        grid_frame.pack()
+        for row in range(self._game.board_size):
+            self.rowconfigure(row, weight=1, minsize=50)
+            self.columnconfigure(row, weight=1, minsize=75)
+            for col in range(self._game.board_size):
+                button = tk.Button(
+                    master=grid_frame,
+                    text="",
+                    font=font.Font(size=36, weight="bold"),
+                    fg="black",
+                    width=3,
+                    height=2,
+                    highlightbackground="lightblue",
+                )
+                self._cells[button] = (row, col)
+                button.bind("<ButtonPress-1>", self.play)
+                button.grid(row=row, column=col, padx=5, pady=5, sticky="nsew")
 
+    def play(self, event):
+        """Handle a player's move."""
+        clicked_btn = event.widget
+        row, col = self._cells[clicked_btn]
+        move = Move(row, col, self._game.current_player.label)
+        if self._game.is_valid_move(move):
+            self._update_button(clicked_btn)
+            self._game.process_move(move)
+            if self._game.is_tied():
+                self._update_display(msg="Tied game!", color="red")
+            elif self._game.has_winner():
+                self._highlight_cells()
+                msg = f'Player "{self._game.current_player.label}" won!'
+                color = self._game.current_player.color
+                self._update_display(msg, color)
+            else:
+                self._game.toggle_player()
+                msg = f"{self._game.current_player.label}'s turn"
+                self._update_display(msg)
 
-# TODO: Replace "check_victory" by "k_in_row" function.
-def check_victory(button):
-    """
-    This function checks various winning conditions of the game.
-    """
-    # check if previous move caused a win on vertical line
-    global buttons
-    x, y = get_coordinates(button)
-    tt = button['text']
-    if buttons[0][y]['text'] == buttons[1][y]['text'] == buttons[2][y]['text'] != " ":
-        buttons[0][y].config(text="|" + tt + "|")
-        buttons[1][y].config(text="|" + tt + "|")
-        buttons[2][y].config(text="|" + tt + "|")
-        return True
+    def _update_button(self, clicked_btn):
+        clicked_btn.config(text=self._game.current_player.label)
+        clicked_btn.config(fg=self._game.current_player.color)
 
-    # check if previous move caused a win on horizontal line
-    if buttons[x][0]['text'] == buttons[x][1]['text'] == buttons[x][2]['text'] != " ":
-        buttons[x][0].config(text="--" + tt + "--")
-        buttons[x][1].config(text="--" + tt + "--")
-        buttons[x][2].config(text="--" + tt + "--")
-        return True
+    def _update_display(self, msg, color="black"):
+        self.display["text"] = msg
+        self.display["fg"] = color
 
-    # check if previous move was on the main diagonal and caused a win
-    if x == y and buttons[0][0]['text'] == buttons[1][1]['text'] == buttons[2][2]['text'] != " ":
-        buttons[0][0].config(text="\\" + tt + "\\")
-        buttons[1][1].config(text="\\" + tt + "\\")
-        buttons[2][2].config(text="\\" + tt + "\\")
-        return True
+    def _highlight_cells(self):
+        for button, coordinates in self._cells.items():
+            if coordinates in self._game.winner_combo:
+                button.config(highlightbackground="red")
 
-    # check if previous move was on the secondary diagonal and caused a win
-    if x + y == 2 and buttons[0][2]['text'] == buttons[1][1]['text'] == buttons[2][0]['text'] != " ":
-        buttons[0][2].config(text="/" + tt + "/")
-        buttons[1][1].config(text="/" + tt + "/")
-        buttons[2][0].config(text="/" + tt + "/")
-        return True
+    def reset_board(self):
+        """Reset the game's board to play again."""
+        self._game.reset_game()
+        self._update_display(msg="Ready?")
+        for button in self._cells.keys():
+            button.config(highlightbackground="lightblue")
+            button.config(text="")
+            button.config(fg="black")
 
-    return False
-
-
-def get_coordinates(button):
-    """
-    This function returns the coordinates of the button clicked.
-    """
-    global buttons
-    for x in range(len(buttons)):
-        for y in range(len(buttons[x])):
-            if buttons[x][y] == button:
-                return x, y
-
-
-def get_button(x, y):
-    """
-    This function returns the button memory location corresponding to a coordinate.
-    """
-    global buttons
-    return buttons[x][y]
-
-
-def reset_game():
-    """
-    This function will reset all the tiles to the initial null value.
-    """
-    global x_pos, o_pos, frames, count
-
-    count = 0
-    x_pos = []
-    o_pos = []
-    result.set("Your Turn!")
-    for x in frames:
-        for y in x.winfo_children():
-            y.config(text=" ", state='normal')
-
-
-def disable_game():
-    """
-    This function deactivates the game after a win, loss or draw.
-    """
-    global frames
-    for x in frames:
-        for y in x.winfo_children():
-            y.config(state='disabled')
-
-
-def exit_game(root):
-    """
-    This function will exit the game by killing the root.
-    """
-    root.destroy()
-
+def main():
+    """Create the game's board and run its main loop."""
+    game = TicTacToeGame()
+    board = TicTacToeBoard(game)
+    board.mainloop()
 
 if __name__ == "__main__":
-    root = Tk()
-    root.title("TicTacToe")
-    root.geometry("150x200")  # Improved the window geometry
-    root.resizable(0, 0)  # To remove the maximize window option
-    result = StringVar()
-    result.set("Your Turn!")
-    w = Label(root, textvariable=result)
-    w.pack(side=BOTTOM)
-    create_frames(root)
-    choices = StringVar(root)
-    choices.set("Vs Pro")
-    menu = OptionMenu(root, choices, "Vs Random", "Vs Pro", "Vs Legend")
-    menu.pack()
-    root.mainloop()
-
+    main()
