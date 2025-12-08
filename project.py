@@ -25,6 +25,7 @@ DEFAULT_PLAYERS = (
 class TicTacToeGame:
     def __init__(self, players=DEFAULT_PLAYERS, board_size=BOARD_SIZE):
         self._players = cycle(players)
+        self.gamemode = "PvP"
         self.board_size = board_size
         self.current_player = next(self._players)
         self.winner_combo = []
@@ -121,7 +122,7 @@ class TicTacToeBoard(tk.Tk):
         file_menu.add_command(label="Play Again", command=self.reset_board)
         file_menu.add_separator()
         file_menu.add_command(label="Exit", command=quit)
-        file_menu.add_command(label="Random", command=self._ai_play_random)
+        file_menu.add_command(label="Random", command=self._change_gm_ai_rand)
         menu_bar.add_cascade(label="File", menu=file_menu)
 
     def _create_board_display(self):
@@ -150,12 +151,19 @@ class TicTacToeBoard(tk.Tk):
                     height=2,
                     highlightbackground="lightblue",
                 )
-                self._cells[button] = (row, col)
+                self._cells[button] = (row, col)               
                 button.bind("<ButtonPress-1>", self.play)
                 button.grid(row=row, column=col, padx=5, pady=5, sticky="nsew")
 
+    def _change_gm_ai_rand(self):
+        self._game.gamemode = "Random"
+        self.reset_board()
+
     def play(self, event):
         """Handle a player's move."""
+        if (self._game.gamemode == "Random"):
+            self.after(1000, self._ai_play_random)
+        # elif (self._game.gamemode == "PvP"):
         clicked_btn = event.widget
         row, col = self._cells[clicked_btn]
         move = Move(row, col, self._game.current_player.label)
@@ -173,12 +181,29 @@ class TicTacToeBoard(tk.Tk):
                 self._game.toggle_player()
                 msg = f"{self._game.current_player.label}'s turn"
                 self._update_display(msg)
-                if (self._game.current_player.isAi == True):
-                    self._ai_play()
     
     def _ai_play_random(self):
         """Handle AI moves."""
-        print("AI's turn")
+        # print("AI's turn")
+        # if (self._game.current_player.isAi == False):
+        #     clicked_btn = event.widget
+        #     row, col = self._cells[clicked_btn]
+        #     move = Move(row, col, self._game.current_player.label)
+        #     if self._game.is_valid_move(move):
+        #         self._update_button(clicked_btn)
+        #         self._game.process_move(move)
+        #         if self._game.is_tied():
+        #             self._update_display(msg="Tied game!", color="red")
+        #         elif self._game.has_winner():
+        #             self._highlight_cells()
+        #             msg = f'Player "{self._game.current_player.label}" won!'
+        #             color = self._game.current_player.color
+        #             self._update_display(msg, color)
+        #         else:
+        #             self._game.toggle_player()
+        #             msg = f"{self._game.current_player.label}'s turn"
+        #             self._update_display(msg)
+        # elif (self._game.current_player.isAi == True):
         rand_move = self._game.get_random_move()
         row, col = rand_move
         move = Move(row, col, self._game.current_player.label)
@@ -188,8 +213,18 @@ class TicTacToeBoard(tk.Tk):
                 if (row, col) == (move.row, move.col):
                     self._update_button(button)
                     self._game.process_move(move)
-                    break
-        self._game.toggle_player()
+                    if self._game.is_tied():
+                        self._update_display(msg="Tied game!", color="red")
+                    elif self._game.has_winner():
+                        self._highlight_cells()
+                        msg = f'Player "{self._game.current_player.label}" won!'
+                        color = self._game.current_player.color
+                        self._update_display(msg, color)
+                    else:
+                        self._game.toggle_player()
+                        msg = f"{self._game.current_player.label}'s turn"
+                        self._update_display(msg)
+
 
 
 
@@ -214,6 +249,7 @@ class TicTacToeBoard(tk.Tk):
             button.config(highlightbackground="lightblue")
             button.config(text="")
             button.config(fg="black")
+            
 
 def main():
     """Create the game's board and run its main loop."""
