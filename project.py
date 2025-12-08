@@ -294,6 +294,14 @@ class TicTacToeBoard(tk.Tk):
         )
         self.display.pack()
 
+        self.tutor_btn = tk.Button(
+            master=display_frame,
+            text="Tutor Hint",
+            font=font.Font(size=12),
+            command=self._suggest_move
+        )
+        self.tutor_btn.pack(pady=5)
+
     def _create_board_grid(self):
         grid_frame = tk.Frame(master=self)
         grid_frame.pack()
@@ -309,10 +317,31 @@ class TicTacToeBoard(tk.Tk):
                     width=5,
                     height=2,
                     highlightbackground="lightblue",
+                    highlightthickness=4
                 )
                 self._cells[button] = (row, col)               
                 button.bind("<ButtonPress-1>", self.play)
                 button.grid(row=row, column=col, padx=5, pady=5, sticky="nsew")
+
+    def _suggest_move(self):
+        """Calculates the best move for the current player and highlights it."""
+        if self._game.current_player.isAi:
+            self._update_display("Not available", "red")
+        
+        best_move = self._game.get_minmax_move()
+        if best_move:
+            row, col = best_move
+            for button, coords in self._cells.items():
+                if coords == (row, col):
+                    self._tutor_hint(button)
+                    break
+
+    def _tutor_hint(self, button):
+        """Highlights a button to indicate a hint of the next best move"""
+        current_symbol = self._game.current_player.label
+        original_text = button.cget("text")
+        button.config(text=current_symbol)
+        self.after(500, lambda: button.config(text=original_text))
 
     def _change_gm_ai_rand(self):
         self._game.gamemode = "Random"
