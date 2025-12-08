@@ -6,21 +6,25 @@ from tkinter import font
 from typing import NamedTuple
 import random
 
+
 class Player(NamedTuple):
     label: str
     color: str
     isAi: bool
+
 
 class Move(NamedTuple):
     row: int
     col: int
     label: str = ""
 
+
 BOARD_SIZE = 3
 DEFAULT_PLAYERS = (
-    Player(label="X", color="blue", isAi=False), # Human Player
-    Player(label="O", color="green", isAi=True), # AI Player
+    Player(label="X", color="blue", isAi=False),  # Human Player
+    Player(label="O", color="green", isAi=True),  # AI Player
 )
+
 
 class TicTacToeGame:
     def __init__(self, players=DEFAULT_PLAYERS, board_size=BOARD_SIZE):
@@ -32,6 +36,8 @@ class TicTacToeGame:
         self._has_winner = False
         self._winning_combos = []
         self._setup_board()
+
+        self.debug_minmax = True # Turn this on/off to control Minimax debug output
 
     def _setup_board(self):
         self._current_moves = [
@@ -104,6 +110,137 @@ class TicTacToeGame:
             return move
         return None
 
+    # ---------- Minimax helpers ----------
+
+    def _check_winner_for_label(self, label):
+        """Check if the given label has a winning combo on the CURRENT board."""
+        for combo in self._winning_combos:
+            if all(self._current_moves[r][c].label == label for (r, c) in combo):
+                return True
+        return False
+
+    def _board_full(self):
+        """Return True if there are no empty cells on the CURRENT board."""
+        for row in self._current_moves:
+            for move in row:
+                if move.label == "":
+                    return False
+        return True
+
+    def _minmax(self, is_maximizing, ai_label, opponent_label):
+        """
+        Core Minimax on the CURRENT board.
+
+        Mutates self._current_moves temporarily and undoes moves after exploring.
+        Returns:
+            +1 if position is winning for ai_label
+            -1 if winning for opponent_label
+             0 if draw (with optimal play)
+        """
+        # Terminal checks on the current simulated board
+        if self._check_winner_for_label(ai_label):
+            return 1
+        if self._check_winner_for_label(opponent_label):
+            return -1
+        if self._board_full():
+            return 0
+
+        if is_maximizing:
+            best_score = -999
+            # Try all possible moves for AI
+            for r in range(self.board_size):
+                for c in range(self.board_size):
+                    if self._current_moves[r][c].label == "":
+                        # Pretend AI plays here
+                        self._current_moves[r][c] = Move(r, c, ai_label)
+                        score = self._minmax(False, ai_label, opponent_label)
+                        # Undo move
+                        self._current_moves[r][c] = Move(r, c, "")
+                        best_score = max(best_score, score)
+            return best_score
+        else:
+            best_score = 999
+            # Try all possible moves for opponent
+            for r in range(self.board_size):
+                for c in range(self.board_size):
+                    if self._current_moves[r][c].label == "":
+                        # Pretend opponent plays here
+                        self._current_moves[r][c] = Move(r, c, opponent_label)
+                        score = self._minmax(True, ai_label, opponent_label)
+                        # Undo move
+                        self._current_moves[r][c] = Move(r, c, "")
+                        best_score = min(best_score, score)
+            return best_score
+
+    def get_minmax_move(self):
+        """
+        Compute the best (row, col) move for the CURRENT player using Minimax.
+
+        This is the "entry point" that the AI uses on its turn.
+
+        It works by:
+          - Looping over every empty cell on the current board,
+          - Temporarily placing the AI's move in that cell,
+          - Calling _minmax(...) to evaluate how good that move is
+            assuming both players play optimally afterwards,
+          - Undoing the move,
+          - Remembering which move gave the highest score.
+
+        Returns:
+            (row, col) tuple for the best move, or None if there are no moves.
+        """
+        # Label for the AI (whoever current_player is right now)
+        ai_label = self.current_player.label
+
+        # Assume a standard two-player Tic-Tac-Toe: the other mark is the opponent
+        opponent_label = "O" if ai_label == "X" else "X"
+
+        # Start with very low best_score so any real score will be better
+        best_score = -999
+        best_move = None
+
+        # Try every empty square as a candidate move
+        for r in range(self.board_size):
+            for c in range(self.board_size):
+                if self._current_moves[r][c].label == "":
+                    # Pretend the AI plays here
+                    self._current_moves[r][c] = Move(r, c, ai_label)
+
+                    # Now it's the opponent's turn, so is_maximizing=False
+                    score = self._minmax(False, ai_label, opponent_label)
+
+                    # Undo the move so we can test the next possibility
+                    self._current_moves[r][c] = Move(r, c, "")
+
+                    # If this move leads to a better outcome, remember it
+                    if score > best_score:
+                        best_score = score
+                        best_move = (r, c)
+
+        return best_move
+
+# ---------- Console Debugs Generated by ChatGPT ----------
+    def _debug(self, msg, depth=0):
+        """Small helper to print Minimax debug messages with indentation."""
+        if self.debug_minmax:
+            indent = "  " * depth
+            print(f"{indent}[MM d={depth}] {msg}")
+
+    def _debug_board(self, depth=0):
+        """Print the current board layout for debugging."""
+        if not self.debug_minmax:
+            return
+        indent = "  " * depth
+        print(f"{indent}Board:")
+        for r in range(self.board_size):
+            row_labels = [
+                (self._current_moves[r][c].label or " ")
+                for c in range(self.board_size)
+            ]
+            print(f"{indent}  " + " | ".join(row_labels))
+        print(f"{indent}" + "-" * 10)
+
+    
 class TicTacToeBoard(tk.Tk):
     def __init__(self, game):
         super().__init__()
@@ -122,6 +259,7 @@ class TicTacToeBoard(tk.Tk):
         file_menu.add_separator()
         file_menu.add_command(label="Exit", command=quit)
         file_menu.add_command(label="Random", command=self._ai_play_random)
+        file_menu.add_command(label="Minimax", command=self._ai_play_minmax)
         menu_bar.add_cascade(label="File", menu=file_menu)
 
     def _create_board_display(self):
@@ -173,25 +311,59 @@ class TicTacToeBoard(tk.Tk):
                 self._game.toggle_player()
                 msg = f"{self._game.current_player.label}'s turn"
                 self._update_display(msg)
-                if (self._game.current_player.isAi == True):
-                    self._ai_play()
-    
+                if self._game.current_player.isAi:
+                    # Use Minimax AI instead of random
+                    self._ai_play_minmax()
+
     def _ai_play_random(self):
-        """Handle AI moves."""
-        print("AI's turn")
+        """Handle AI moves (random)."""
+        print("AI's turn (Random)")
         rand_move = self._game.get_random_move()
+        if rand_move is None:
+            return
         row, col = rand_move
         move = Move(row, col, self._game.current_player.label)
         if move and self._game.is_valid_move(move):
-
-            for button, (row, col) in self._cells.items():
-                if (row, col) == (move.row, move.col):
+            for button, (btn_row, btn_col) in self._cells.items():
+                if (btn_row, btn_col) == (move.row, move.col):
                     self._update_button(button)
                     self._game.process_move(move)
                     break
         self._game.toggle_player()
+        msg = f"{self._game.current_player.label}'s turn"
+        self._update_display(msg)
 
+    def _ai_play_minmax(self):
+        """Handle AI moves using the Minimax algorithm."""
+        print("AI (Minimax) turn")
 
+        best_move = self._game.get_minmax_move()
+        if best_move is None:
+            return  # No possible moves (full/terminal board)
+
+        row, col = best_move
+        move = Move(row, col, self._game.current_player.label)
+
+        if self._game.is_valid_move(move):
+            # Find the matching button for this move
+            for button, (btn_row, btn_col) in self._cells.items():
+                if (btn_row, btn_col) == (move.row, move.col):
+                    self._update_button(button)
+                    self._game.process_move(move)
+                    break
+
+            # After AI moves, check game state just like in `play`
+            if self._game.is_tied():
+                self._update_display(msg="Tied game!", color="red")
+            elif self._game.has_winner():
+                self._highlight_cells()
+                msg = f'Player "{self._game.current_player.label}" won!'
+                color = self._game.current_player.color
+                self._update_display(msg, color)
+            else:
+                self._game.toggle_player()
+                msg = f"{self._game.current_player.label}'s turn"
+                self._update_display(msg)
 
     def _update_button(self, clicked_btn):
         clicked_btn.config(text=self._game.current_player.label)
@@ -215,11 +387,13 @@ class TicTacToeBoard(tk.Tk):
             button.config(text="")
             button.config(fg="black")
 
+
 def main():
     """Create the game's board and run its main loop."""
     game = TicTacToeGame()
     board = TicTacToeBoard(game)
     board.mainloop()
+
 
 if __name__ == "__main__":
     main()
