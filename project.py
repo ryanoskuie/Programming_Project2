@@ -34,6 +34,10 @@ class TicTacToeGame:
         self._winning_combos = []
         self._setup_board()
 
+        # Minimax debugging
+        self.debug_minmax = True      # Set to False to silence Minimax debug output
+        self._nodes_evaluated = 0     # Counts how many states Minimax checked last search
+
     def _setup_board(self):
         self._current_moves = [
             [Move(row, col) for col in range(self.board_size)]
@@ -105,6 +109,159 @@ class TicTacToeGame:
             return move
         return None
 
+     # ---------- Minimax helpers ----------
+
+    def _check_winner_for_label(self, label):
+        """
+        Return True if the given label ("X" or "O") currently has a winning
+        combination on the board.
+
+        This uses the same _winning_combos that process_move() relies on,
+        but it does NOT modify any game state (no flags, no winner_combo).
+        That makes it safe to call inside Minimax while we're "pretending"
+        to place moves on the board.
+        """
+        for combo in self._winning_combos:
+            if all(self._current_moves[r][c].label == label for (r, c) in combo):
+                return True
+        return False
+
+    def _board_full(self):
+        """
+        Return True if there are no empty cells ("") on the CURRENT board.
+
+        Used by Minimax to detect a draw (no more moves left) in the
+        simulated game tree.
+        """
+        for row in self._current_moves:
+            for move in row:
+                if move.label == "":
+                    return False
+        return True
+
+    def _minmax(self, is_maximizing, ai_label, opponent_label):
+        """
+        Core Minimax on the CURRENT board.
+
+        This function recursively explores all possible future moves for both
+        players and evaluates the final outcome assuming optimal play.
+
+        It works by:
+          - Temporarily placing a move on self._current_moves,
+          - Recursively calling itself to explore deeper moves,
+          - Undoing that move (restoring the previous state),
+          - Tracking the best score seen for either the maximizing
+            (AI) or minimizing (opponent) player.
+
+        Args:
+            is_maximizing (bool):
+                True  -> it's the AI's turn (we try to MAXIMIZE the score)
+                False -> it's the opponent's turn (we try to MINIMIZE the score)
+            ai_label (str):
+                The label used by the AI player, e.g. "O" (or "X").
+            opponent_label (str):
+                The label used by the opponent, e.g. "X" (or "O").
+
+        Returns:
+            int:
+                +1  if this position is a win for ai_label
+                -1  if this position is a win for opponent_label
+                 0  if this position is a draw (with optimal play)
+        """
+        # Count this simulated node for debug stats
+        self._nodes_evaluated += 1
+
+        # --- 1. Terminal checks on the current simulated board ---
+        if self._check_winner_for_label(ai_label):
+            return 1
+        if self._check_winner_for_label(opponent_label):
+            return -1
+        if self._board_full():
+            return 0
+
+        # --- 2. Recursive case: explore all children moves ---
+        if is_maximizing:
+            best_score = -999
+            # AI's turn: choose the move with the highest score
+            for r in range(self.board_size):
+                for c in range(self.board_size):
+                    if self._current_moves[r][c].label == "":
+                        # Pretend AI plays here
+                        self._current_moves[r][c] = Move(r, c, ai_label)
+                        score = self._minmax(False, ai_label, opponent_label)
+                        # Undo move
+                        self._current_moves[r][c] = Move(r, c, "")
+                        best_score = max(best_score, score)
+            return best_score
+        else:
+            best_score = 999
+            # Opponent's turn: assume they try to minimize the AI's score
+            for r in range(self.board_size):
+                for c in range(self.board_size):
+                    if self._current_moves[r][c].label == "":
+                        # Pretend opponent plays here
+                        self._current_moves[r][c] = Move(r, c, opponent_label)
+                        score = self._minmax(True, ai_label, opponent_label)
+                        # Undo move
+                        self._current_moves[r][c] = Move(r, c, "")
+                        best_score = min(best_score, score)
+            return best_score
+
+    def get_minmax_move(self):
+        """
+        Compute the best (row, col) move for the CURRENT player using Minimax.
+
+        Debug output:
+          - prints the board before search,
+          - prints each top-level move and its final score,
+          - prints the chosen move and total nodes evaluated.
+        """
+        ai_label = self.current_player.label
+        opponent_label = "O" if ai_label == "X" else "X"
+
+        # Reset node counter for this search
+        self._nodes_evaluated = 0
+
+        if self.debug_minmax:
+            print("\n=== Minimax search start ===")
+            print(f"AI label      : {ai_label}")
+            print(f"Opponent label: {opponent_label}")
+
+        best_score = -999
+        best_move = None
+
+        # Top-level: try every empty square as the first AI move
+        for r in range(self.board_size):
+            for c in range(self.board_size):
+                if self._current_moves[r][c].label == "":
+                    if self.debug_minmax:
+                        print(f"Top-level: try AI move at ({r}, {c})")
+
+                    # Pretend AI plays here
+                    self._current_moves[r][c] = Move(r, c, ai_label)
+
+                    # Run Minimax assuming opponent moves next (MIN node)
+                    score = self._minmax(False, ai_label, opponent_label)
+
+                    # Undo move
+                    self._current_moves[r][c] = Move(r, c, "")
+
+                    if self.debug_minmax:
+                        print(f"  -> move ({r}, {c}) gets score {score}")
+
+                    if score > best_score:
+                        best_score = score
+                        best_move = (r, c)
+                        if self.debug_minmax:
+                            print(f"  -> NEW BEST move ({r}, {c}) with score {best_score}")
+
+        if self.debug_minmax:
+            print(f"Chosen move   : {best_move} with score {best_score}")
+            print(f"Nodes checked : {self._nodes_evaluated}")
+            print("=== Minimax search end ===\n")
+
+        return best_move
+    
 class TicTacToeBoard(tk.Tk):
     def __init__(self, game):
         super().__init__()
@@ -122,7 +279,9 @@ class TicTacToeBoard(tk.Tk):
         file_menu.add_command(label="Play Again", command=self.reset_board)
         file_menu.add_separator()
         file_menu.add_command(label="Exit", command=quit)
+        file_menu.add_command(label="PvP", command=self._change_gm_pvp)
         file_menu.add_command(label="Random", command=self._change_gm_ai_rand)
+        file_menu.add_command(label="Minmax", command=self._change_gm_ai_minmax)
         menu_bar.add_cascade(label="File", menu=file_menu)
 
     def _create_board_display(self):
@@ -159,11 +318,22 @@ class TicTacToeBoard(tk.Tk):
         self._game.gamemode = "Random"
         self.reset_board()
 
+    def _change_gm_ai_minmax(self):
+        self._game.gamemode = "Minmax"
+        self.reset_board()
+
+    def _change_gm_pvp(self):
+        self._game.gamemode = "PvP"
+        self.reset_board()
+
     def play(self, event):
         """Handle a player's move."""
         if (self._game.gamemode == "Random"):
             self.after(1000, self._ai_play_random)
-        # elif (self._game.gamemode == "PvP"):
+        elif (self._game.gamemode == "Minmax"):
+            self.after(1000, self._ai_play_minmax)
+        elif (self._game.gamemode == "PvP"):
+            self._play_pvp(event)
         clicked_btn = event.widget
         row, col = self._cells[clicked_btn]
         move = Move(row, col, self._game.current_player.label)
@@ -184,26 +354,6 @@ class TicTacToeBoard(tk.Tk):
     
     def _ai_play_random(self):
         """Handle AI moves."""
-        # print("AI's turn")
-        # if (self._game.current_player.isAi == False):
-        #     clicked_btn = event.widget
-        #     row, col = self._cells[clicked_btn]
-        #     move = Move(row, col, self._game.current_player.label)
-        #     if self._game.is_valid_move(move):
-        #         self._update_button(clicked_btn)
-        #         self._game.process_move(move)
-        #         if self._game.is_tied():
-        #             self._update_display(msg="Tied game!", color="red")
-        #         elif self._game.has_winner():
-        #             self._highlight_cells()
-        #             msg = f'Player "{self._game.current_player.label}" won!'
-        #             color = self._game.current_player.color
-        #             self._update_display(msg, color)
-        #         else:
-        #             self._game.toggle_player()
-        #             msg = f"{self._game.current_player.label}'s turn"
-        #             self._update_display(msg)
-        # elif (self._game.current_player.isAi == True):
         rand_move = self._game.get_random_move()
         row, col = rand_move
         move = Move(row, col, self._game.current_player.label)
@@ -225,8 +375,56 @@ class TicTacToeBoard(tk.Tk):
                         msg = f"{self._game.current_player.label}'s turn"
                         self._update_display(msg)
 
+    def _ai_play_minmax(self):
+        """Handle AI moves using the Minimax algorithm."""
+        print("AI (Minimax) turn")
 
+        best_move = self._game.get_minmax_move()
+        if best_move is None:
+            return  # No possible moves (full/terminal board)
 
+        row, col = best_move
+        move = Move(row, col, self._game.current_player.label)
+
+        if self._game.is_valid_move(move):
+            # Find the matching button for this move
+            for button, (btn_row, btn_col) in self._cells.items():
+                if (btn_row, btn_col) == (move.row, move.col):
+                    self._update_button(button)
+                    self._game.process_move(move)
+                    break
+
+            # After AI moves, check game state just like in `play`
+            if self._game.is_tied():
+                self._update_display(msg="Tied game!", color="red")
+            elif self._game.has_winner():
+                self._highlight_cells()
+                msg = f'Player "{self._game.current_player.label}" won!'
+                color = self._game.current_player.color
+                self._update_display(msg, color)
+            else:
+                self._game.toggle_player()
+                msg = f"{self._game.current_player.label}'s turn"
+                self._update_display(msg)
+
+    def _play_pvp(self, event):
+        clicked_btn = event.widget
+        row, col = self._cells[clicked_btn]
+        move = Move(row, col, self._game.current_player.label)
+        if self._game.is_valid_move(move):
+            self._update_button(clicked_btn)
+            self._game.process_move(move)
+            if self._game.is_tied():
+                self._update_display(msg="Tied game!", color="red")
+            elif self._game.has_winner():
+                self._highlight_cells()
+                msg = f'Player "{self._game.current_player.label}" won!'
+                color = self._game.current_player.color
+                self._update_display(msg, color)
+            else:
+                self._game.toggle_player()
+                msg = f"{self._game.current_player.label}'s turn"
+                self._update_display(msg)
 
     def _update_button(self, clicked_btn):
         clicked_btn.config(text=self._game.current_player.label)
