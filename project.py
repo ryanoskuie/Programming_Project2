@@ -21,6 +21,11 @@ DEFAULT_PLAYERS = (
     Player(label="X", color="blue", isAi=False), # Human Player
     Player(label="O", color="green", isAi=True), # AI Player
 )
+POSITION_WEIGHTS = [
+    [2, 1, 2],
+    [1, 3, 1],
+    [2, 1, 2]
+]
 
 class TicTacToeGame:
     def __init__(self, players=DEFAULT_PLAYERS, board_size=BOARD_SIZE):
@@ -139,7 +144,7 @@ class TicTacToeGame:
                     return False
         return True
 
-    def _minmax(self, is_maximizing, ai_label, opponent_label):
+    def _minmax(self, is_maximizing, ai_label, opponent_label, alpha, beta, depth):
         """
         Core Minimax on the CURRENT board.
 
@@ -173,11 +178,14 @@ class TicTacToeGame:
 
         # --- 1. Terminal checks on the current simulated board ---
         if self._check_winner_for_label(ai_label):
-            return 1
+            return 1000 + depth
         if self._check_winner_for_label(opponent_label):
-            return -1
+            return -1000 - depth
         if self._board_full():
             return 0
+        
+        if depth == 0:
+            return self.evaluate_board()
 
         # --- 2. Recursive case: explore all children moves ---
         if is_maximizing:
@@ -186,12 +194,18 @@ class TicTacToeGame:
             for r in range(self.board_size):
                 for c in range(self.board_size):
                     if self._current_moves[r][c].label == "":
+                        
                         # Pretend AI plays here
                         self._current_moves[r][c] = Move(r, c, ai_label)
-                        score = self._minmax(False, ai_label, opponent_label)
+                        score = self._minmax(False, ai_label, opponent_label, alpha, beta, depth - 1)
+                        
                         # Undo move
                         self._current_moves[r][c] = Move(r, c, "")
                         best_score = max(best_score, score)
+                        
+                        alpha = max(alpha, best_score)
+                        if beta <= alpha:
+                            return best_score
             return best_score
         else:
             best_score = 999
@@ -199,12 +213,18 @@ class TicTacToeGame:
             for r in range(self.board_size):
                 for c in range(self.board_size):
                     if self._current_moves[r][c].label == "":
+                        
                         # Pretend opponent plays here
                         self._current_moves[r][c] = Move(r, c, opponent_label)
-                        score = self._minmax(True, ai_label, opponent_label)
+                        score = self._minmax(True, ai_label, opponent_label, alpha, beta, depth - 1)
+                        
                         # Undo move
                         self._current_moves[r][c] = Move(r, c, "")
                         best_score = min(best_score, score)
+
+                        beta = min(beta, best_score)
+                        if beta <= alpha:
+                            return best_score
             return best_score
 
     def get_minmax_move(self):
@@ -222,13 +242,19 @@ class TicTacToeGame:
         # Reset node counter for this search
         self._nodes_evaluated = 0
 
+        # --- Configuration ---
+        # Controls to what depth the AI can search to (9 is perfect play on a 3x3)
+        max_depth = 4
+        #----------------------
         if self.debug_minmax:
             print("\n=== Minimax search start ===")
             print(f"AI label      : {ai_label}")
             print(f"Opponent label: {opponent_label}")
 
-        best_score = -999
+        best_score = -9999
         best_move = None
+        alpha = -9999
+        beta = 9999
 
         # Top-level: try every empty square as the first AI move
         for r in range(self.board_size):
@@ -241,7 +267,7 @@ class TicTacToeGame:
                     self._current_moves[r][c] = Move(r, c, ai_label)
 
                     # Run Minimax assuming opponent moves next (MIN node)
-                    score = self._minmax(False, ai_label, opponent_label)
+                    score = self._minmax(False, ai_label, opponent_label, alpha, beta, max_depth - 1)
 
                     # Undo move
                     self._current_moves[r][c] = Move(r, c, "")
@@ -252,6 +278,7 @@ class TicTacToeGame:
                     if score > best_score:
                         best_score = score
                         best_move = (r, c)
+                        alpha = max(alpha, best_score)
                         if self.debug_minmax:
                             print(f"  -> NEW BEST move ({r}, {c}) with score {best_score}")
 
@@ -261,6 +288,91 @@ class TicTacToeGame:
             print("=== Minimax search end ===\n")
 
         return best_move
+    
+    def evaluate_position(self):
+        """
+        Heuristic 1: Positional Values
+        3 for center
+        2 for corner
+        1 for edges
+        Returns net score of the board (AI score - Opp score)
+        """
+        ai_label = self.current_player.label
+        opp_label = "O" if ai_label == "X" else "X"
+        score = 0
+
+        for r in range(self.board_size):
+            for c in range(self.board_size):
+                label = self._current_moves[r][c].label
+                
+                if r < 3 and c < 3:
+                    cell_value = POSITION_WEIGHTS[r][c]
+                else:
+                    cell_value = 0 
+
+                if label == ai_label:
+                    score += cell_value
+                elif label == opp_label:
+                    score -= cell_value
+        return score
+    
+    def evaluate_line(self, combo):
+        """
+        Heuristic 2: Line Counting
+        Scoring (AI):                   Scoring (Opponent):
+            +100 for 3 in a row             -100 for 3 in a row 
+            +10 for 2 in a row              -10 for 2 in a row 
+            +1 for 1 in a row               -1 for 1 in a row   
+            0 if a line is blocked          0 if a line is blocked
+        """
+        ai_label = self.current_player.label
+        opp_label = "O" if ai_label == "X" else "X"
+        ai_count = 0
+        opp_count = 0
+
+        # Count amount of pieces in a row, col or diag
+        for row, col in combo:
+            label = self._current_moves[row][col].label
+            if label == ai_label:
+                ai_count += 1
+            elif label == opp_label:
+                opp_count += 1
+
+        # Evaluate based on counts
+        if ai_count > 0 and opp_count > 0:
+            return 0
+        
+        if ai_count > 0:
+            if ai_count == 3:
+                return 100
+            elif ai_count == 2:
+                return 10
+            else:
+                return 1
+            
+        if opp_count > 0:
+            if opp_count == 3:
+                return -100
+            elif opp_count == 2:
+                return -10
+            else:
+                return -1
+        return 0
+
+    def evaluate_board(self):
+        """
+        Evaluation function: linear sum
+        Runs the heuristic on every possible winning line and adds up all the scores
+        Positive is AI advantage, negative is opponent advantage
+        """
+        threat_score = 0
+        for combo in self._winning_combos:
+            threat_score += self.evaluate_line(combo)
+        
+        position_score = self.evaluate_position()
+
+        total_score = threat_score + position_score
+        return total_score
     
 class TicTacToeBoard(tk.Tk):
     def __init__(self, game):
