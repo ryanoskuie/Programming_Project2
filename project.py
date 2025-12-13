@@ -393,7 +393,7 @@ class TicTacToeBoard(tk.Tk):
         file_menu.add_command(label="Exit", command=quit)
         file_menu.add_command(label="PvP", command=self._change_gm_pvp)
         file_menu.add_command(label="Random", command=self._change_gm_ai_rand)
-        file_menu.add_command(label="Minmax", command=self._change_gm_ai_minmax)
+        file_menu.add_command(label="Minimax", command=self._change_gm_ai_minmax)
         menu_bar.add_cascade(label="File", menu=file_menu)
 
     def _create_board_display(self):
