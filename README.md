@@ -7,4 +7,7 @@ A build in tutor that can suggest the most optimal move
 Follows standard rules of Tic-Tac Toe
 
 program.py
+
 Starts the game, how to play the game with a build in "tutor". Wures together the game logic.
+
+## Requirements
